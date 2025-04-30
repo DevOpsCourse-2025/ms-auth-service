@@ -35,12 +35,22 @@ public class AuthProvider {
   public Mono<HttpResponse<?>> login(AdministratorRequestDTO dto) {
     return Mono.fromCallable(() -> {
         try {
-            AdministratorResponseDTO response = administratorClient.signInAdministrator(dto);
-
-            if (response == null) {
-                throw new NotAuthenticatedException("Invalid credentials");
+            if(dto.getEmail().isEmpty() || dto.getInvitationCode().isEmpty() || dto.getPassword().isEmpty()){
+                throw new BadRequestException("The field of email, password and invitation code are OBLIGATORY");
             }
 
+            if(!dto.getEmail().endsWith(".com")){
+                throw new BadRequestException("The field of email is incorrect, write a valid email");
+            }
+            AdministratorResponseDTO existingAdministrator = administratorClient.findAdministratorByEmail(dto.getEmail());
+
+            if (!existingAdministrator.getEmail().equals(dto.getEmail())
+            || !existingAdministrator.getInvitationCode().equals(dto.getInvitationCode())) {
+            throw new BadRequestException("Invalid credentials for administrator " + dto.getEmail());
+            }
+
+            AdministratorResponseDTO response = administratorClient.signInAdministrator(dto);
+            
             Map<String, Object> claims = new HashMap<>();
             claims.put("sub", response.getEmail());
             claims.put("name", response.getInvitationCode());
@@ -55,7 +65,7 @@ public class AuthProvider {
             if (status != null) {
                 switch (status.getCode()) {
                     case 400:
-                        throw new BadRequestException("Invalid login input: make sure all fields are filled correctly.");
+                    throw new BadRequestException("Bad request. Invalid input: " + e.getMessage());
                     default:
                         throw new InternalServerException("Unexpected error during login: " + status);
                 }
@@ -69,15 +79,25 @@ public class AuthProvider {
     public Mono<HttpResponse<?>> register(AdministratorRequestDTO dto) {
         return Mono.fromCallable(() -> {
             try {
+                if(dto.getEmail().isEmpty() || dto.getInvitationCode().isEmpty() || dto.getPassword().isEmpty()){
+                    throw new BadRequestException("The field of email, password and invitation code are OBLIGATORY");
+                }
+
+                
+                if(!dto.getEmail().endsWith(".com")){
+                    throw new BadRequestException("The field of email is incorrect, write a valid email");
+                }
+        
                 AdministratorResponseDTO response = administratorClient.createAdministrator(dto);
 
                 return HttpResponse.ok(Map.of("message", "Registration successful"));
+
             } catch (HttpClientResponseException e) { 
                 HttpStatus status = e.getStatus();
                 if (status != null) {
                     switch (status.getCode()) {
                         case 400:
-                        throw new BadRequestException("Invalid input: make sure all fields are filled correctly.");
+                        throw new BadRequestException("Bad request. Invalid input: " + e.getMessage());
                         case 409:
                             throw new ConflictException("An administrator with this email or invitation code already exists.");
                         default:
